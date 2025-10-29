@@ -369,6 +369,7 @@ public class MainActivity extends AppCompatActivity {
             bindAidlService();
             txtStatus.setText("Status: Conectando serviço interno...");
         }
+        showRepoDialog();
 
         // ===== 4. Listeners dos botões de impressão =====
         btnPrintSizes.setOnClickListener(v -> {
@@ -640,6 +641,30 @@ public class MainActivity extends AppCompatActivity {
                                     1,   // centro
                                     16
                             );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com Candara 🚀\nOutra linha...",
+                                    "Candara.ttf",
+                                    30f,
+                                    1,   // centro
+                                    16
+                            );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com Calibri 🚀\nOutra linha...",
+                                    "calibri.ttf",
+                                    30f,
+                                    1,   // centro
+                                    16
+                            );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com Agencyb.ttf 🚀\nOutra linha...",
+                                    "Agencyb.ttf",
+                                    30f,
+                                    1,   // centro
+                                    16
+                            );
                     } catch (IOException e) {
                         runOnUiThread(() -> showError(e));
                     }
@@ -689,8 +714,8 @@ public class MainActivity extends AppCompatActivity {
                         );
                         aidlGraphicsPrinter.printCustomFontText(
                                 MainActivity.this,
-                                "Texto com Transcity.otf 🚀\nOutra linha...",
-                                "Transcity.otf",
+                                "Texto com Candara 🚀\nOutra linha...",
+                                "Candara.ttf",
                                 30f,
                                 1,   // centro
                                 16
@@ -1223,4 +1248,34 @@ public class MainActivity extends AppCompatActivity {
 
         return true;
     }
+    private void showRepoDialog() {
+        final String repoUrl = "https://github.com/vasarely-ops/BluetoothUniversalPrinter";
+
+        new androidx.appcompat.app.AlertDialog
+                .Builder(this)
+                .setTitle("Código-fonte / Integração")
+                .setMessage(
+                        "Consulte documentação, exemplos e atualizações no repositório oficial:\n\n"
+                                + repoUrl
+                )
+                .setPositiveButton("Visitar", (dialog, which) -> {
+                    try {
+                        android.net.Uri uri = android.net.Uri.parse(repoUrl);
+                        Intent i = new Intent(Intent.ACTION_VIEW, uri);
+                        startActivity(i);
+                    } catch (Exception e) {
+                        Toast.makeText(
+                                this,
+                                "Não foi possível abrir o link.",
+                                Toast.LENGTH_LONG
+                        ).show();
+                    }
+                })
+                .setNegativeButton("Cancelar", (dialog, which) -> {
+                    dialog.dismiss();
+                })
+                .setCancelable(true)
+                .show();
+    }
+
 }

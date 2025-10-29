@@ -1,564 +1,630 @@
-# MANUAL DE INTEGRAÇÃO
-Impressão ESC/POS via Bluetooth (Android)
-Driver: BluetoothEscPosPrinter (custom)
+# BluetoothUniversalPrinter
+Impressão térmica universal para Android (ESC/POS via Bluetooth ou serviço interno AIDL)
 
+Este projeto padroniza impressão térmica independente do modelo do terminal POS
+ou da impressora conectada.  
+A ideia é: **mesmo código Java → mesmo layout impresso**, tanto em maquininhas
+com impressora interna quanto em impressoras Bluetooth 58mm baratas.
 
-# VISÃO RÁPIDA (cola para o dev apressado)
+---
 
-Fluxo básico:
+## ⚡ Visão Rápida (cola pro dev apressado)
 
-1. Conectar via Bluetooth SPP (RFCOMM).
-2. Criar BluetoothEscPosPrinter passando o OutputStream.
-3. Usar beginJob() / endJob() pra imprimir.
-4. Chamar métodos de alto nível:
+Fluxo normal de impressão:
 
-    * txtPrint(texto, alinhamento, escala)
-    * printImageResource(...)
-    * printQrCode(...)
-    * printCode128(...)
-    * printGrid(...)
-    * printRoundedGrid(...)
-    * printParagraphInRoundedBox(...)
-    * feed()
-    * partialCut()
+1. O app detecta o fabricante do terminal.
+2. Ele decide o backend:
+    - **Bluetooth ESC/POS** (PAX / SUNMI / GERTEC / genérico).
+    - **AIDL interno** (POSITIVO / L500).
+3. Se for Bluetooth:
+    - Faz scan.
+    - Usuário escolhe a impressora.
+    - Conecta via RFCOMM (UUID SPP clássico).
+    - Cria `BluetoothEscPosPrinter`.
+4. Se for AIDL:
+    - Faz `bindService` no serviço interno do fabricante.
+    - Usa `IPrinterService` + `AidlGraphicsPrinter`.
 
-Uso típico:
+Depois disso, você só chama as funções de alto nível, por exemplo:
 
-```
-// depois de conectar:
-BluetoothEscPosPrinter printer =
-    new BluetoothEscPosPrinter(btConn.getOutputStream());
-
+```java
 io.execute(() -> {
     try {
-        printer.beginJob();
-        printer.txtPrint("OLÁ MUNDO", 1, 1);
-        printer.printQrCode("chave pix aqui", 256);
-        printer.endJob();
-        printer.feed(5);
-        printer.partialCut(); // se a guilhotina existir
+        // BLUETOOTH
+        escPosPrinter.beginJob();
+        escPosPrinter.txtPrint("ALINHADO ESQUERDA (normal)", 0, 0);
+        escPosPrinter.txtPrint("CENTRO 2x", 1, 1);
+        escPosPrinter.txtPrint("DIREITA 3x", 2, 3);
+        escPosPrinter.printQrCode("000201...PIX...", 256);
+        escPosPrinter.endJob();
+        escPosPrinter.feed(3);
+        escPosPrinter.partialCut();
     } catch (IOException e) {
         // tratar erro
     }
 });
+````
+
+> Todas as chamadas de impressão rodam **fora da UI thread** usando um `ExecutorService`
+> (`io.execute(...)`).
+> Se você fizer I/O Bluetooth na UI thread você arrisca ANR.
+
+---
+
+## 🧠 O que esse projeto resolve
+
+* Impressoras diferentes imprimindo com layouts diferentes → resolvido.
+* Impressora Bluetooth externa x impressora interna da maquininha → mesma API.
+* Problema clássico da imagem "cortada no meio" → resolvido enviando em faixas.
+* Impressão centralizada, caixas arredondadas, QR PIX, código de barras, etc.
+* Seleção da impressora pelo próprio app (scan + lista).
+
+---
+
+## 📦 Estrutura lógica
+
+### 1. `MainActivity`
+
+* Faz todo o fluxo de uso real:
+
+    * Detecta o fabricante (`detectManufacturer()`).
+    * Decide se vai usar **Bluetooth** ou **AIDL** (`chooseBackend()`).
+    * Cuida de permissões, scan e conexão.
+    * Salva a impressora escolhida (SharedPreferences).
+    * Expõe botões de teste / exemplo de cada tipo de impressão.
+
+### 2. `BluetoothPrinterConnection`
+
+* Abre um socket RFCOMM com a impressora.
+* Usa o UUID Serial Port Profile (SPP):
+  `00001101-0000-1000-8000-00805f9b34fb`
+* Entrega `OutputStream` pronto pra mandar comandos ESC/POS.
+* Mantém estado `isConnected()`, e fecha conexão no `onDestroy()`.
+
+### 3. `BluetoothEscPosPrinter`
+
+* Driver ESC/POS de alto nível.
+* Possui métodos prontos tipo:
+
+    * `beginJob()`, `endJob()`
+    * `txtPrint(...)`
+    * `printImageResource(...)`
+    * `printQrCode(...)`
+    * `printCode128(...)`
+    * `printGrid(...)`
+    * `printRoundedGrid(...)`
+    * `printParagraphInRoundedBox(...)`
+    * `feed(...)`
+    * `partialCut()`
+* Garante compatibilidade com impressoras térmicas 58mm.
+
+### 4. `IPrinterService` + `AidlGraphicsPrinter`
+
+* Usado quando o terminal tem **impressora interna** (ex.: POSITIVO / L500).
+* `bindService()` conecta no serviço AIDL do fabricante.
+* `aidlPrinterService` fornece:
+
+    * `printText(...)`
+    * `printBitmap(...)`
+    * `printQRCode(...)`
+    * `printBarCode(...)`
+    * `printWrapPaper(...)` (avanço de papel)
+* `AidlGraphicsPrinter` desenha layouts mais complexos (grade, caixas arredondadas, fontes personalizadas) e manda como bitmap para o serviço.
+
+---
+
+## 🔍 Detecção de fabricante → backend
+
+```java
+private enum Manufacturer {
+    PAX, SUNMI, GERTEC, POSITIVO, L500, DESCONHECIDO
+}
+
+private enum PrintBackend {
+    BLUETOOTH, AIDL
+}
+
+private Manufacturer detectManufacturer() {
+    String man = Build.MANUFACTURER.toUpperCase();
+    String brand = Build.BRAND.toUpperCase();
+    String model = Build.MODEL.toUpperCase();
+
+    if (man.contains("PAX")     || brand.contains("PAX")     || model.contains("PAX"))     return Manufacturer.PAX;
+    if (man.contains("SUNMI")   || brand.contains("SUNMI")   || model.contains("SUNMI"))   return Manufacturer.SUNMI;
+    if (man.contains("GERTEC")  || brand.contains("GERTEC")  || model.contains("GERTEC"))  return Manufacturer.GERTEC;
+    if (man.contains("POSITIVO")|| brand.contains("POSITIVO"))                            return Manufacturer.POSITIVO;
+    if (model.contains("L500")  || brand.contains("L500")    || man.contains("L500"))      return Manufacturer.L500;
+
+    return Manufacturer.DESCONHECIDO;
+}
+
+private PrintBackend chooseBackend(Manufacturer m) {
+    switch (m) {
+        case POSITIVO:
+        case L500:
+            return PrintBackend.AIDL;       // usa impressora interna
+        case PAX:
+        case SUNMI:
+        case GERTEC:
+        default:
+            return PrintBackend.BLUETOOTH;  // usa ESC/POS Bluetooth
+    }
+}
 ```
 
-Pronto. O resto deste manual explica cada parte.
+Isso acontece logo no `onCreate()`. A UI já mostra para o usuário qual modo foi escolhido:
 
-# 1. ARQUITETURA DO PROJETO
+* “Serviço interno (AIDL)” ou
+* “Bluetooth ESC/POS externo”.
 
-O projeto está dividido em 3 responsabilidades:
+---
 
-(1) BluetoothPrinterConnection
-- Abre conexão RFCOMM usando o MAC address da impressora.
-- Usa o UUID SPP clássico:
-  00001101-0000-1000-8000-00805f9b34fb
-- Entrega um OutputStream conectado diretamente na impressora.
+## 📡 Fluxo Bluetooth
 
-(2) BluetoothEscPosPrinter
-- Classe principal de impressão ESC/POS.
-- Recebe o OutputStream no construtor.
-- Expõe métodos de alto nível para imprimir texto, imagens, QR code, etc.
-- Trata problemas clássicos de impressora 58mm que perde buffer, corta imagem etc.
+### Permissões
 
-(3) MainActivity (ou sua Activity/Service)
-- Faz scan Bluetooth.
-- Mostra lista de impressoras.
-- Conecta na selecionada.
-- Cria uma instância de BluetoothEscPosPrinter.
-- Dispara as impressões em uma thread separada (ExecutorService) para não travar a UI.
+No Android 12+:
 
-IMPORTANTE: toda escrita no Bluetooth deve rodar fora da UI thread.
+* `BLUETOOTH_SCAN`
+* `BLUETOOTH_CONNECT`
 
-# 2. FLUXO DE USO NA ACTIVITY
+No Android ≤ 11:
 
-Passo a passo típico no app:
+* `ACCESS_FINE_LOCATION`
+* `BLUETOOTH`
+* `BLUETOOTH_ADMIN`
 
-1. Escanear dispositivos Bluetooth:
+O código pede em tempo de execução com `ActivityResultLauncher`, e só continua se todas forem aceitas.
 
-    * Pede permissões (BLUETOOTH_SCAN / CONNECT em Android 12+).
-    * Usa BluetoothAdapter.startDiscovery().
-    * Lista pareados + encontrados num RecyclerView.
+### Descoberta e seleção de impressora
 
-2. Selecionar um dispositivo e conectar:
-
-    * Pega o MAC address.
-    * Abre socket RFCOMM com o UUID SPP.
-    * Obtém OutputStream.
-    * Cria:
-      printer = new BluetoothEscPosPrinter(outStreamObtido);
-
-3. Antes de imprimir:
-
-    * Verifica conexão (socket ainda vivo).
-
-4. Para imprimir:
-
-    * Usa um ExecutorService singleThreadExecutor().
-    * Dentro do executor:
-      printer.beginJob();
-      ... (chama os métodos de impressão) ...
-      printer.endJob();
-      opcional: printer.feed(5); printer.partialCut();
-
-Por que thread separada?
-
-* Se mandar dados ESC/POS na UI thread, você pode travar a interface (ANR).
-* Impressoras lentas + Bluetooth ruim = I/O bloqueante.
-
-# 3. SOBRE A CLASSE BluetoothEscPosPrinter
-
-O que ela faz:
-
-* Comandos ESC/POS básicos (alinhamento, bold, tamanho de fonte, feed, corte).
-* Impressão de texto formatado.
-* Impressão de imagens (logo, QR, código de barras).
-* Impressão de "grades" de números (círculos / caixas arredondadas).
-* Impressão de parágrafos dentro de caixas arredondadas (tipo bloco de aviso).
-
-Constantes internas importantes:
-
-* MAX_WIDTH_DOTS = 384
-  -> Largura típica da cabeça térmica para impressora 58mm.
-  -> Tudo (imagem, QR, grids) é limitado/reescalado para caber nessa largura.
-
-* STRIPE_HEIGHT = 64 (ou 128 em algumas versões)
-  -> A imagem nunca é enviada inteira de uma vez.
-  -> Ela é dividida em "faixas" horizontais (stripes) pequenas.
-  -> Isso evita:
-
-    * buffer overflow interno da impressora,
-    * corte da imagem no meio,
-    * erro "unknown -2",
-    * travamento em POS.
-
-* STRIPE_PAUSE_MS ~ 20ms
-  -> Pausa curta entre stripes para deixar a impressora respirar.
-
-Por que isso é importante?
-Muitas térmicas baratas (e POS embarcados) NÃO aguentam um bitmap grande num único comando ESC/POS.
-Mandar em stripes pequenas resolveu corte pela metade e travamentos.
-
-# 4. CICLO beginJob() / endJob()
-
-printer.beginJob():
-
-* Envia ESC @ (reset ESC/POS).
-* Garante um estado "limpo": alinhamento à esquerda, bold desligado, fonte normal.
-* Use no começo de TODO BLOCO lógico de impressão (ex: início do cupom).
-
-printer.endJob():
-
-* Dá um pequeno feed final (salta ~2 linhas).
-* Reseta estilos para não “vazar” formatação pro próximo cupom.
-
-Recomendação:
-
-* Faça sempre:
-  printer.beginJob();
-  ...imprime tudo...
-  printer.endJob();
-
-Assim você sempre imprime previsível, independente do estado anterior da cabeça.
-
-
-# 5. IMPRESSÃO DE TEXTO
-
-Assinatura:
-txtPrint(String text, int align, int scale)
-
-Parâmetros:
-
-* text  : texto da linha. (o método já adiciona "\n" no final)
-* align : 0 = esquerda, 1 = centro, 2 = direita
-* scale : 0 = fonte normal
-  1 = 2x largura/altura
-  3 = 3x largura/altura (se o hardware suportar)
-  (internamente vira ESC/POS "GS ! n" com n=0x00,0x11,0x22)
-
-Comportamento interno de txtPrint():
-
-1. setAlign(align)  -> ESC a n
-2. setTextSize(byte) -> GS ! n (tamanho)
-3. setBold(scale > 0) -> ativa bold se fonte grande
-4. escreve texto + "\n"
-
-Por que essa ordem importa?
-Algumas impressoras ignoravam alinhamento se você mudasse o tamanho da fonte depois.
-Então primeiro alinha, depois seta tamanho. Isso corrigiu o bug de “alinhamento não funciona”.
-
-Exemplo:
-
-```
-printer.beginJob();
-
-// texto padrão, alinhado à esquerda
-printer.txtPrint("TOTAL A PAGAR: R$ 123,45", 0, 0);
-
-// centralizado, fonte ~2x, bold automático
-printer.txtPrint("OBRIGADO PELA PREFERÊNCIA", 1, 1);
-
-// alinhado à direita, ainda maior (~3x)
-printer.txtPrint("VOLTE SEMPRE", 2, 3);
-
-printer.endJob();
+```java
+btnScan.setOnClickListener(v -> startDiscoveryAndSelect());
 ```
 
-Obs:
+`startDiscoveryAndSelect()` faz:
 
-* A codificação default é CP437.
-  Se acentos saírem tortos, você pode trocar o Charset para ISO-8859-1 dentro da classe.
+1. Garante permissões.
+2. Garante que o Bluetooth está ligado.
+3. Limpa a lista `foundDevices`.
+4. Adiciona impressoras já pareadas (`getBondedDevices()`).
+5. Mostra imediatamente um diálogo se já existir algo pareado.
+6. Inicia `BluetoothAdapter.startDiscovery()` para achar novos devices.
+7. O `BroadcastReceiver` (`discoveryReceiver`) escuta:
 
+    * `ACTION_FOUND` → adiciona cada device descoberto.
+    * `ACTION_DISCOVERY_FINISHED` → chama `showDevicePickerDialog()`.
 
-# 6. FEED E CORTE
+A tela de seleção é um `AlertDialog` com nome + MAC:
 
-
-feed(int linhas)
-
-* Avança o papel 'linhas' vezes (enviando LF).
-* Útil pra “dar espaço” antes do corte.
-
-partialCut()
-
-* Envia GS V 1 (corte parcial).
-* Muitas impressoras 58mm portáteis NÃO têm guilhotina -> ignoram esse comando.
-* Então se não cortar, é normal.
-
-Uso típico no final de um cupom:
-
-```
-printer.feed(5);      // empurra papel pra fora
-printer.partialCut(); // tenta cortar, se existir guilhotina
-```
-
-# 7. IMPRESSÃO DE IMAGENS, QR E CÓDIGO DE BARRAS
-
-=== 7.1 Imagem comum (logo, cupom fiscal renderizado etc.) ===
-
-Método:
-printImageResource(Resources res, int drawableId)
-
-O que faz:
-
-* Carrega um Bitmap do drawable.
-* Redimensiona para caber na largura MAX_WIDTH_DOTS (ex: 384 px).
-* Converte para preto/branco.
-* Divide em stripes de poucas linhas.
-* Manda uma stripe por vez via comando ESC/POS raster (GS v 0).
-* Pausa entre stripes.
-* Resultado: imagem sai COMPLETA, sem corte no meio.
-
-Uso:
-
-```
-printer.beginJob();
-printer.printImageResource(getResources(), R.drawable.img_logo);
-printer.endJob();
+```java
+new AlertDialog.Builder(this)
+    .setTitle("Selecione a impressora")
+    .setItems(labels, (dialog, which) -> {
+        PrinterDevice chosen = foundDevices.get(which);
+        connectAndSaveBluetooth(chosen);
+    })
+    .setNegativeButton("Cancelar", null)
+    .show();
 ```
 
-=== 7.2 QR Code ===
+### Conexão e persistência
 
-Método:
-printQrCode(String data, int sizePx)
+```java
+private void connectAndSaveBluetooth(PrinterDevice device) {
+    io.execute(() -> {
+        try {
+            // abre RFCOMM SPP
+            btConn = new BluetoothPrinterConnection();
+            btConn.connect(btAdapter, device.address, SPP_UUID);
 
-* Gera um QRCode usando ZXing.
-* Desenha esse QR em Bitmap preto/branco.
-* Imprime com o mesmo pipeline seguro de stripes.
+            // cria driver ESC/POS com o OutputStream do socket
+            escPosPrinter = new BluetoothEscPosPrinter(btConn.getOutputStream());
 
-Uso:
+            // salva MAC / nome pra reconectar sozinho depois
+            SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            sp.edit()
+              .putString(PREF_KEY_MAC, device.address)
+              .putString(PREF_KEY_NAME, device.name)
+              .apply();
 
-```
-printer.beginJob();
-printer.printQrCode("000201010212BR.GOV.BCB.PIX....EXEMPLO", 256);
-printer.endJob();
-```
+            runOnUiThread(() -> {
+                txtStatus.setText("Status: Conectado em " + device.name + " (" + device.address + ")");
+                Toast.makeText(MainActivity.this,"Conectado e salvo!",Toast.LENGTH_SHORT).show();
+            });
 
-sizePx:
-
-* Tamanho em pixels do QR gerado (antes de eventual ajuste de largura).
-* 256 geralmente fica bom numa 58mm.
-
-=== 7.3 Código de Barras CODE128 ===
-
-Método:
-printCode128(String data, int widthPx, int heightPx)
-
-* Gera um CODE128 (leitor de código de barras padrão de PDV costuma ler).
-* widthPx e heightPx controlam o “comprimento” visual final.
-* Também vai em stripes, então não corta.
-
-Uso:
-
-```
-printer.beginJob();
-printer.printCode128("123456789012", 300, 100);
-printer.endJob();
+        } catch (Exception e) {
+            // erro de conexão
+        }
+    });
+}
 ```
 
+Na próxima vez que o app abrir, ele tenta `attemptAutoReconnectBluetooth()` usando os dados salvos.
 
-# 8. GRID DE NÚMEROS (BOLAS / CARTELAS)
+---
 
+## 🔌 Fluxo AIDL (impressora interna POS)
 
-Temos dois recursos para loterias, rifas, cartelas, etc.
+Para habilitar o aidl em seu codigo siga os passos:
 
-8.1 printGrid (bolinhas)
+1. Copie a pasta `aidl` deste projeto para dentro do seu módulo Android (normalmente `app/src/main/aidl`).
 
-Assinatura:
-printGrid(
-List<String> numbers,
-int columns,
-int radiusPx,
-float textSizePx
-)
+2. Abra o `build.gradle.kts` **do módulo** (ex.: `app/build.gradle.kts`) e adicione as configurações abaixo dentro do bloco `android { ... }`:
 
-Ou versões helper:
-printGrid(String[] numbers, ...)
-printGrid(int[] numbers, ...)
+```kotlin
+android {
+    // ... seu conteúdo atual
 
-O que faz:
+    sourceSets {
+        getByName("main") {
+            aidl.srcDirs("src/main/aidl")
+        }
+    }
 
-* Gera um bitmap com várias células.
-* Cada célula é um círculo desenhado (stroke preto).
-* Dentro do círculo, o número é centralizado.
-* A fonte tenta ter o tamanho solicitado, mas se não couber no círculo ela é reduzida automaticamente.
-* A grade toda é centralizada na impressão e enviada em stripes.
-
-Parâmetros:
-
-* numbers  -> lista de "01","02","03",... ou usa int[] que já formata "%02d".
-* columns  -> quantas colunas por linha (ex: 5).
-* radiusPx -> raio do círculo (ex: 24 px).
-* textSizePx -> tamanho de fonte alvo (ex: 22f).
-
-Exemplo:
-
-```
-int[] jogo = { 1,2,3,4,5,6,7,8,9,10,
-               11,12,13,14,15 };
-
-printer.beginJob();
-printer.printGrid(jogo,
-                  5,     // 5 colunas
-                  24,    // raio do círculo ~24px
-                  22f);  // fonte alvo
-printer.endJob();
+    buildFeatures {
+        aidl = true
+    }
+}
 ```
 
-Saída (conceitual):
-(01) (02) (03) (04) (05)
-(06) (07) (08) (09) (10)
-(11) (12) (13) (14) (15)
+3. Sincronize o Gradle.
 
-Visualmente são círculos contornados com os números centralizados.
+4. Se o Android Studio ainda não reconhecer as interfaces AIDL:
 
-8.2 printRoundedGrid (caixas arredondadas)
+    * Vá em **File > Invalidate Caches...**
+    * Escolha **Invalidate and Restart**
+    * Depois faça um **Rebuild Project**
 
-Assinatura:
-printRoundedGrid(
-List<String> numbers,
-int columns,
-int boxWidthPx,
-int boxHeightPx,
-int cornerRadiusPx,
-float textSizePxWanted
-)
+Isso força o Android Studio a indexar os `.aidl` e gerar os stubs corretamente.
 
-O que faz:
+Quando o backend for `AIDL`, o app:
 
-* Cada número fica dentro de um retângulo com cantos arredondados.
-* Parecido com uma tabela de aposta / cartela de bingo / cartela de loteria.
-* O texto é centralizado na box.
-* A fonte também é reduzida se estiver grande demais pra caber.
+1. Faz `bindService()` num serviço do fabricante:
 
-Parâmetros:
+   ```java
+   Intent svcIntent = new Intent();
+   svcIntent.setPackage("com.xcheng.printerservice");
+   svcIntent.setAction("com.xcheng.printerservice.IPrinterService");
+   bindService(svcIntent, aidlConnection, Context.BIND_AUTO_CREATE);
+   ```
+2. Recebe uma instância de `IPrinterService` em `onServiceConnected`.
+3. Inicializa a impressora:
 
-* columns         -> número de colunas.
-* boxWidthPx      -> largura da caixa em px (ex: 60).
-* boxHeightPx     -> altura da caixa em px (ex: 40).
-* cornerRadiusPx  -> raio dos cantos arredondados (ex: 8).
-* textSizePxWanted-> tamanho alvo da fonte (ex: 22f).
+   ```java
+   aidlPrinterService.printerInit(aidlCallback);
+   aidlPrinterService.printerReset(aidlCallback);
+   aidlReady = true;
+   aidlGraphicsPrinter = new AidlGraphicsPrinter(aidlPrinterService, aidlCallback);
+   ```
+4. Usa `aidlPrinterService` e/ou `aidlGraphicsPrinter` para imprimir texto, bitmap, QR, etc.
 
-Exemplo:
+Esse modo não precisa Bluetooth, nem pareamento, nem seleção manual.
 
+---
+
+## 🖨️ Funções de impressão disponíveis
+
+A Activity já demonstra cada tipo de impressão em botões.
+Abaixo está o que cada botão faz.
+
+### 1. Texto alinhado, tamanhos diferentes
+
+```java
+escPosPrinter.beginJob();
+escPosPrinter.txtPrint("ALINHADO ESQUERDA (normal)", 0, 0);
+escPosPrinter.txtPrint("CENTRO 2x", 1, 1);
+escPosPrinter.txtPrint("DIREITA 3x", 2, 3);
+escPosPrinter.endJob();
 ```
-String[] dezena = {
+
+* `txtPrint(String text, int align, int scale)`
+
+    * `align`: `0 = esquerda`, `1 = centro`, `2 = direita`
+    * `scale`: `0 = normal`, `1 = ~2x`, `3 = ~3x` (se suportado pelo hardware)
+
+Versão AIDL:
+
+```java
+String multiline =
+    "ALINHADO ESQUERDA (normal)\n" +
+    "   CENTRO ~2x (simulado)\n" +
+    "         DIREITA ~3x (simulado)\n";
+aidlPrinterService.printText(multiline, aidlCallback);
+aidlPrinterService.printWrapPaper(2, aidlCallback);
+```
+
+---
+
+### 2. Impressão de imagem / logo
+
+```java
+escPosPrinter.beginJob();
+escPosPrinter.setAlign(1); // centraliza
+escPosPrinter.printImageResource(getResources(), R.drawable.img);
+escPosPrinter.endJob();
+```
+
+* Converte Bitmap em preto/branco.
+* Redimensiona para caber na largura da cabeça térmica.
+* Envia em “faixas” (stripes) para não cortar no meio e não travar.
+
+Versão AIDL:
+
+```java
+Bitmap bmp = BitmapFactory.decodeResource(getResources(), R.drawable.img);
+aidlPrinterService.printBitmap(bmp, aidlCallback);
+aidlPrinterService.printWrapPaper(2, aidlCallback);
+```
+
+---
+
+### 3. QR Code (PIX, etc)
+
+```java
+final String qrPayload = "000201010212BR.GOV.BCB.PIX....EXEMPLO";
+
+escPosPrinter.beginJob();
+escPosPrinter.setAlign(1);
+escPosPrinter.txtPrint("Pague com PIX:", 1, 1);
+escPosPrinter.printQrCode(qrPayload, 256); // 256px alvo
+escPosPrinter.endJob();
+```
+
+Versão AIDL:
+
+```java
+aidlPrinterService.printText("Pague com PIX:\n", aidlCallback);
+// align=1, size=300 px, etc.
+aidlPrinterService.printQRCode(qrPayload, 1, 300, aidlCallback);
+aidlPrinterService.printWrapPaper(2, aidlCallback);
+```
+
+---
+
+### 4. Código de Barras CODE128
+
+```java
+final String code = "123456789012";
+
+escPosPrinter.beginJob();
+escPosPrinter.setAlign(1);
+escPosPrinter.txtPrint("CODIGO DE BARRAS:", 1, 1);
+escPosPrinter.printCode128(code, 300, 100); // largura/altura
+escPosPrinter.endJob();
+```
+
+Versão AIDL:
+
+```java
+aidlPrinterService.printText("CODIGO DE BARRAS:\n", aidlCallback);
+aidlPrinterService.printBarCode(
+    code,
+    1,      // align (1 = centro)
+    3,      // barWidth (fino/grosso)
+    100,    // height
+    true,   // print human-readable content
+    aidlCallback
+);
+aidlPrinterService.printWrapPaper(2, aidlCallback);
+```
+
+---
+
+### 5. Grade de números (bolinhas)
+
+```java
+String[] seq = {
     "01","02","03","04","05",
-    "06","07","08","09","10"
+    "06","07","08","09","10",
+    "11","12","13","14","15"
 };
 
-printer.beginJob();
-printer.printRoundedGrid(
-    dezena,
-    5,      // colunas
-    60,     // largura box px
-    40,     // altura box px
-    8,      // canto arredondado
-    22f     // tamanho de fonte alvo
+escPosPrinter.beginJob();
+escPosPrinter.setAlign(1); // centro
+escPosPrinter.printGrid(
+    seq,
+    5,    // colunas
+    24,   // raio aproximado do círculo px
+    22f   // tamanho de fonte alvo px
 );
-printer.endJob();
+escPosPrinter.endJob();
 ```
 
-Resultado visual:
-[ 01 ] [ 02 ] [ 03 ] [ 04 ] [ 05 ]
-[ 06 ] [ 07 ] [ 08 ] [ 09 ] [ 10 ]
+No backend AIDL usamos `aidlGraphicsPrinter.printCircleGrid(...)` com a mesma ideia:
+desenha o layout em bitmap e manda para a impressora interna.
 
-Mas com bordas arredondadas, bonitinho, centralizado.
+Essa função é perfeita pra cartelas, rifas, apostas numéricas etc.
 
+---
 
-# 9. PARÁGRAFO COM CAIXA ARREDONDADA (BLOCO DE AVISO)
+### 6. Grade de caixas arredondadas
 
+```java
+String[] seq = {
+    "01","02","03","04","05",
+    "06","07","08","09","10",
+    "11","12","13","14","15"
+};
 
-Função:
-printParagraphInRoundedBox(
-String bloco,
-int fontPx,
-int paddingPx,
-int radiusPx
-)
-
-O que ela faz:
-
-1. Quebra automaticamente o texto longo em várias linhas usando StaticLayout.
-   Ou seja, não precisa inserir "\n" manual em cada linha.
-2. Mede a altura total desse texto.
-3. Desenha um retângulo com cantos arredondados em volta de TODO o parágrafo.
-4. Gera um bitmap com fundo branco + borda preta + texto.
-5. Imprime esse bitmap (novamente em stripes, então não corta).
-
-Parâmetros:
-
-* bloco      -> Texto grande (pode ser várias frases).
-* fontPx     -> Tamanho da fonte em pixels (por exemplo 24).
-* paddingPx  -> Espaço interno entre a borda e o texto (por ex. 16).
-* radiusPx   -> Raio do canto arredondado (por ex. 20).
-
-Exemplo:
-
+escPosPrinter.beginJob();
+escPosPrinter.setAlign(1);
+escPosPrinter.printRoundedGrid(
+    seq,
+    5,     // colunas
+    64,    // largura da box px
+    48,    // altura da box px
+    10,    // raio canto arredondado px
+    22f    // tamanho da fonte alvo px
+);
+escPosPrinter.endJob();
 ```
-String aviso =
+
+Em AIDL: `aidlGraphicsPrinter.printRoundedGrid(...)`.
+Visualmente fica tipo uma tabela de dezenas, com cada célula tendo borda arredondada.
+
+---
+
+### 7. Parágrafo com caixa arredondada
+
+```java
+final String textoDemo =
     "Olho em redor do bar em que escrevo estas linhas. " +
     "Aquele homem ali no balcão, caninha após caninha, " +
     "nem desconfia que se acha conosco desde o início das eras...";
 
-printer.beginJob();
-printer.printParagraphInRoundedBox(
-    aviso,
-    24,   // fonte 24px
-    16,   // padding interno
-    20    // raio canto arredondado
+escPosPrinter.beginJob();
+escPosPrinter.printParagraphInRoundedBox(
+    textoDemo,
+    24,  // tamanho da fonte em px
+    16,  // padding interno em px
+    20   // raio do canto arredondado px
 );
-printer.endJob();
+escPosPrinter.endJob();
 ```
 
-Uso típico:
+Em AIDL: `aidlGraphicsPrinter.printParagraphInRoundedBox(...)`.
 
-* Mensagens legais tipo “NÃO É DOCUMENTO FISCAL”.
-* Observação de garantia.
-* Informativo PIX.
-* Termos ou mini-contrato impresso.
+Essa função:
 
-# 10. BOAS PRÁTICAS E DICAS
+* Quebra o texto automaticamente em múltiplas linhas.
+* Desenha um retângulo com cantos arredondados em volta de TODO o bloco.
+* Imprime isso como imagem (faixas seguras).
 
-(1) SEMPRE imprimir em background thread
-- Não faça escrita Bluetooth na UI thread.
-- Use ExecutorService.newSingleThreadExecutor().
+Ótimo pra:
 
-(2) SEMPRE checar se está conectado
-- Antes de imprimir, verifique se o socket Bluetooth ainda está aberto.
-- Verifique se printer != null.
-  Exemplo:
-  if (btConn == null || printer == null || !btConn.isConnected()) {
-  // mostrar Toast "Conecte primeiro."
+* Aviso "NÃO É DOCUMENTO FISCAL"
+* Termos rápidos
+* Mensagem PIX/recibo
+
+---
+
+### 8. Fontes personalizadas (OTF/TTF em `/assets`)
+
+```java
+escPosPrinter.printCustomFontText(
+    MainActivity.this,
+    "😎\nLinha 2\nLinha 3",
+    "VarsityTeamBold.otf", // arquivo em assets/
+    60f,                   // tamanho da fonte em px
+    1,                     // alinhamento: 0=esq,1=centro,2=dir
+    1                      // padding em px
+);
+
+// outras combinações de fonte/tamanho/alinhamento:
+escPosPrinter.printCustomFontText(
+    MainActivity.this,
+    "Texto com Transcity 😎\nLinha 2\nLinha 3",
+    "Transcity.otf",
+    18f,
+    1,
+    1
+);
+```
+
+Em AIDL: `aidlGraphicsPrinter.printCustomFontText(...)` faz o mesmo conceito.
+Internamente a função:
+
+* Renderiza o texto com uma `Typeface` carregada do `assets/`.
+* Converte para bitmap preto/branco dentro da largura de impressão.
+* Manda esse bitmap pra impressora (em faixas, de novo).
+
+Isso permite layout muito mais bonito e padronizado entre dispositivos.
+
+---
+
+### 9. Feed e corte
+
+```java
+escPosPrinter.feed(3);     // avança 3 linhas
+escPosPrinter.partialCut(); // tenta corte parcial (se a guilhotina existir)
+```
+
+No backend AIDL:
+
+```java
+aidlPrinterService.printWrapPaper(3, aidlCallback); // alimenta papel
+// corte físico depende do hardware interno; nem todo POS corta
+```
+
+**Importante:** impressoras 58mm portáteis geralmente NÃO têm guilhotina.
+Se nada cortar, é comportamento esperado.
+
+---
+
+## 🧯 Boas práticas
+
+* **Sempre imprimir em background thread**
+  (O projeto usa `ExecutorService io = Executors.newSingleThreadExecutor()`.)
+
+* **Sempre verificar conexão antes de imprimir**
+
+  ```java
+  if (!checkConnected()) {
+      Toast.makeText(this, "Conecte uma impressora primeiro.", Toast.LENGTH_SHORT).show();
+      return;
   }
+  ```
 
-(3) beginJob() / endJob()
-- Use beginJob() e endJob() para cada recibo / comprovante / cupom.
-- Isso garante reset ESC/POS, estilo coerente, e evita que um cupom herde
-  bold/alinhamento do cupom anterior.
+* **Sempre fechar recursos no `onDestroy()`**
 
-(4) Imagens grandes
-- Não tente mandar um bitmap gigante inteiro.
-- O método interno já divide em stripes (faixas de altura limitada) e envia
-  GS v 0 várias vezes com pequenas pausas.
-- Isso foi necessário para resolver:
-- corte de imagem pela metade
-- erro "unknown -2"
-- travamentos em POS embarcados
+  ```java
+  unregisterReceiver(discoveryReceiver);
+  btConn.close();
+  io.shutdownNow();
+  unbindService(aidlConnection);
+  ```
 
-(5) Alinhamento do texto
-- Muitas térmicas não aplicam alinhamento corretamente se você muda
-  o tamanho da fonte depois.
-- O nosso txtPrint() faz na ordem certa:
-  setAlign() -> setTextSize() -> setBold() -> print text
-  Não mude a ordem.
+* **Usar `beginJob()` / `endJob()`**
+  Cada comprovante/cupom deve começar com `beginJob()` e terminar com `endJob()`.
+  Isso garante reset de formatação ESC/POS, alinhamento previsível e espaçamento final.
 
-(6) Corte parcial
-- partialCut() chama o comando ESC/POS padrão.
-- Se a impressora não tiver guilhotina ou estiver configurada como "manual tear",
-  simplesmente nada acontece. Isso é esperado.
+* **Imagens grandes**
+  O driver já fatia imagens/QR/barras em tiras ("stripes").
+  Isso evita:
 
-(7) Charset / acentuação
-- A classe usa CP437 por padrão.
-- Se precisar de acentos corretamente em PT-BR, algumas impressoras aceitam bem
-  ISO-8859-1 (Latin-1).
-- Você pode trocar o Charset lá no construtor para Charset.forName("ISO-8859-1")
-  se sua impressora suportar.
+    * imagem sair cortada no meio
+    * erro `unknown -2`
+    * travamento da impressora
 
-# 11. CHECKLIST PARA ADAPTAR EM OUTRO SISTEMA
+---
 
-Para reaproveitar em outro app Android:
+## ✅ Checklist para portar pro seu app
 
-[ ] Copiar a classe BluetoothEscPosPrinter.
-- Ela depende apenas de OutputStream e ZXing (para QR/CODE128).
+* [ ] Copiar `BluetoothPrinterConnection` e `BluetoothEscPosPrinter`.
+* [ ] Criar uma Activity / Service que:
 
-[ ] Criar ou adaptar BluetoothPrinterConnection:
-- Responsável por:
-  . BluetoothAdapter
-  . createRfcommSocketToServiceRecord(UUID SPP)
-  . socket.connect()
-  . getOutputStream()
-  . método isConnected()
-  . método close()
+    * Pede permissões de Bluetooth.
+    * Faz scan (`startDiscoveryAndSelect()`).
+    * Mostra lista (`showDevicePickerDialog()`).
+    * Salva o MAC address escolhido.
+    * Mantém `BluetoothEscPosPrinter` ativo.
+* [ ] Se estiver rodando num POS com impressora interna:
 
-[ ] Criar UI para:
-- Listar impressoras pareadas + descobertas.
-- Selecionar uma e conectar.
+    * Fazer `bindService()` no `IPrinterService` do fabricante.
+    * Usar `aidlPrinterService` + `AidlGraphicsPrinter` em vez do Bluetooth.
+* [ ] Rodar TODA impressão em background thread (`io.execute(...)`).
+* [ ] Chamar `beginJob()` / `endJob()` em cada bloco de impressão.
+* [ ] Usar `printCustomFontText(...)` para ter mesma estética em qualquer hardware.
 
-[ ] Criar ExecutorService single-thread:
-ExecutorService io = Executors.newSingleThreadExecutor();
+---
 
-[ ] Nas ações de botão:
-io.execute(() -> {
-try {
-printer.beginJob();
-printer.txtPrint(...);
-printer.endJob();
-} catch (IOException e) {
-// tratar erro (usar runOnUiThread pra mexer na UI)
-}
-});
+## 🏁 Resumindo
 
-[ ] Usar ScrollView na tela se você tiver muitos botões de teste (evita overflow de layout em telas pequenas).
+* O app escolhe automaticamente entre:
 
-[ ] Quando a Activity for destruída:
-- unregisterReceiver(discoveryReceiver)
-- fechar conexão btConn.close()
-- io.shutdownNow()
+    * **Bluetooth ESC/POS** externo, ou
+    * **Impressora interna AIDL**.
+* Você ganha uma API única de impressão:
 
-# 12. RESUMO FINAL
+    * Texto alinhado/tamanho variável.
+    * QRCode PIX.
+    * Código de barras.
+    * Imagem (logo).
+    * Grades numéricas (círculos / caixas arredondadas).
+    * Bloco de texto com borda arredondada.
+    * Fontes personalizadas (OTF/TTF nos assets).
+    * Avanço e corte.
+* Tudo isso pensado pra **rodar estável em campo**, sem depender de SDK fechado de cada fabricante.
 
-* Você tem uma classe pronta (BluetoothEscPosPrinter) que:
-  -> Sabe imprimir texto com alinhamento, tamanho e bold automático.
-  -> Sabe imprimir imagem inteira sem cortar, usando stripes.
-  -> Gera e imprime QR Code e CODE128.
-  -> Consegue montar tabelas/grades de números em bolinhas ou caixas arredondadas.
-  -> Consegue desenhar um bloco de texto longo dentro de uma moldura arredondada, tipo aviso, e imprimir isso.
-  -> Faz feed e tenta corte.
-
-* Você só precisa:
-  -> Um OutputStream de uma conexão Bluetooth SPP estável;
-  -> Chamadas aos métodos em uma thread que não seja a UI;
-  -> Verificar conexão antes de mandar dados;
-  -> Chamar beginJob()/endJob() ao redor de cada impressão lógica.
-
-Com isso você tem um módulo de impressão ESC/POS reutilizável para cupons, comprovantes, comandas, rifas, bilhetes e etc. Sem depender de SDK proprietário da impressora.
+Use este repositório como base para todos os seus recibos, comprovantes, comandas e bilhetes impressos no Android 🚀
