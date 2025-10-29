@@ -591,6 +591,7 @@ public class MainActivity extends AppCompatActivity {
             if (backend == PrintBackend.BLUETOOTH) {
                 io.execute(() -> {
                         try {
+
                             escPosPrinter.printCustomFontText(
                                     MainActivity.this,
                                     "😎\nLinha 2\nLinha 3",
@@ -623,6 +624,22 @@ public class MainActivity extends AppCompatActivity {
                                     1,               // 0=esq,1=centro,2=dir
                                     1               // padding em px
                             );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com VarsityTeam-Bold 🚀\nOutra linha...",
+                                    "VarsityTeamBold.otf",
+                                    30f,
+                                    1,   // centro
+                                    16
+                            );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com Transcity.otf 🚀\nOutra linha...",
+                                    "Transcity.otf",
+                                    30f,
+                                    1,   // centro
+                                    16
+                            );
                     } catch (IOException e) {
                         runOnUiThread(() -> showError(e));
                     }
@@ -630,6 +647,38 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 io.execute(() -> {
                     try {
+                        aidlGraphicsPrinter.printCustomFontText(
+                                MainActivity.this,
+                                "😎\nLinha 2\nLinha 3",
+                                "VarsityTeamBold.otf",   // arquivo dentro de assets/
+                                60f,             // tamanho em px
+                                1,               // 0=esq,1=centro,2=dir
+                                1               // padding em px
+                        );
+                        aidlGraphicsPrinter.printCustomFontText(
+                                MainActivity.this,
+                                "Texto com VarsityTeamBold 😎\nLinha 2\nLinha 3",
+                                "VarsityTeamBold.otf",   // arquivo dentro de assets/
+                                32f,             // tamanho em px
+                                0,               // 0=esq,1=centro,2=dir
+                                1               // padding em px
+                        );
+                        aidlGraphicsPrinter.printCustomFontText(
+                                MainActivity.this,
+                                "Texto com VarsityTeamBold 😎\nLinha 2\nLinha 3",
+                                "VarsityTeamBold.otf",   // arquivo dentro de assets/
+                                22f,             // tamanho em px
+                                2,               // 0=esq,1=centro,2=dir
+                                1               // padding em px
+                        );
+                        aidlGraphicsPrinter.printCustomFontText(
+                                MainActivity.this,
+                                "Texto com Transcity 😎\nLinha 2\nLinha 3",
+                                "Transcity.otf",   // arquivo dentro de assets/
+                                18f,             // tamanho em px
+                                1,               // 0=esq,1=centro,2=dir
+                                1               // padding em px
+                        );
                         aidlGraphicsPrinter.printCustomFontText(
                                 MainActivity.this,
                                 "Texto com VarsityTeam-Bold 🚀\nOutra linha...",
