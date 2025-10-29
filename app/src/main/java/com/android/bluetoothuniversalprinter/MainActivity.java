@@ -35,6 +35,7 @@ import androidx.core.content.ContextCompat;
 import com.android.bluetoothuniversalprinter.printer.bluetooth.BluetoothEscPosPrinter;
 import com.android.bluetoothuniversalprinter.printer.bluetooth.BluetoothPrinterConnection;
 import com.android.bluetoothuniversalprinter.printer.bluetooth.PrinterDevice;
+import com.android.bluetoothuniversalprinter.printer.positivo.AidlGraphicsPrinter;
 import com.xcheng.printerservice.IPrinterCallback;
 import com.xcheng.printerservice.IPrinterService;
 
@@ -85,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
      * Constantes / chaves
      * ===================================================== */
     private boolean aidlReady = false;
+    private AidlGraphicsPrinter aidlGraphicsPrinter;
     private static final String TAG = "MainActivityPrinter";
     private static final String PREFS_NAME = "printer_prefs";
     private static final String PREF_KEY_MAC = "printer_mac";
@@ -141,20 +143,21 @@ public class MainActivity extends AppCompatActivity {
             aidlPrinterService = IPrinterService.Stub.asInterface(service);
             aidlBound = true;
 
-            // tenta inicializar a impressora física
+            // inicializa impressora POS no background
             io.execute(() -> {
                 try {
-                    // inicializa
                     aidlPrinterService.printerInit(aidlCallback);
-                    // opcional / seguro em alguns terminais: resetar
                     aidlPrinterService.printerReset(aidlCallback);
 
-                    // se chegou aqui sem RemoteException:
                     aidlReady = true;
+                    // agora podemos criar o helper gráfico,
+                    // porque já temos um serviço válido
+                    aidlGraphicsPrinter = new AidlGraphicsPrinter(aidlPrinterService, aidlCallback);
 
                     runOnUiThread(() -> {
                         txtStatus.setText("Status: Impressora interna pronta");
-                        Toast.makeText(MainActivity.this,
+                        Toast.makeText(
+                                MainActivity.this,
                                 "Impressora interna pronta",
                                 Toast.LENGTH_SHORT
                         ).show();
@@ -162,9 +165,11 @@ public class MainActivity extends AppCompatActivity {
                 } catch (RemoteException e) {
                     Log.e(TAG, "Falha ao inicializar impressora interna", e);
                     aidlReady = false;
+                    aidlGraphicsPrinter = null;
                     runOnUiThread(() -> {
                         txtStatus.setText("Status: Erro ao inicializar impressora interna");
-                        Toast.makeText(MainActivity.this,
+                        Toast.makeText(
+                                MainActivity.this,
                                 "Falha ao iniciar impressora interna",
                                 Toast.LENGTH_LONG
                         ).show();
@@ -175,9 +180,13 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
-
+            aidlBound = false;
+            aidlReady = false;
+            aidlGraphicsPrinter = null;
+            aidlPrinterService = null;
+            runOnUiThread(() ->
+                    txtStatus.setText("Status: Serviço interno desconectado"));
         }
-
     };
 
     // Callback "genérico" para operações de impressão no AIDL
@@ -371,13 +380,42 @@ public class MainActivity extends AppCompatActivity {
                 // AIDL não tem grid fancy pronto -> vamos gerar texto simples com numeração
                 io.execute(() -> {
                     try {
-                        StringBuilder sb = new StringBuilder();
-                        for (int i = 1; i <= 15; i++) {
-                            sb.append(String.format("%02d ", i));
-                            if (i % 5 == 0) sb.append("\n");
-                        }
-                        aidlPrinterService.printText(sb.toString(), aidlCallback);
-                        aidlPrinterService.printWrapPaper(2, aidlCallback);
+                        if (!checkConnected()) return;
+
+                        // limpa formatação interna antes de começar o "bloco"
+                        aidlPrinterService.printerReset(aidlCallback);
+
+                        String[] seq = {
+                                "01","02","03","04","05",
+                                "06","07","08","09","10",
+                                "11","12","13","14","15"
+                        };
+                        aidlGraphicsPrinter.printCircleGrid(
+                                seq,
+                                5,
+                                24,
+                                22f
+                        );
+
+                        String[] seq2 = {
+                                "01","02","03","04","05",
+                                "06","07","08","09","10",
+                                "11","12"
+                        };
+                        aidlGraphicsPrinter.printCircleGrid(
+                                seq2,
+                                5,
+                                24,
+                                22f
+                        );
+
+                        aidlGraphicsPrinter.printCircleGrid(
+                                seq2,
+                                4,
+                                24,
+                                22f
+                        );
+
                     } catch (Exception e) {
                         runOnUiThread(() -> showError(e));
                     }
@@ -418,13 +456,25 @@ public class MainActivity extends AppCompatActivity {
                 // fallback em AIDL -> outra grade textual
                 io.execute(() -> {
                     try {
-                        StringBuilder sb = new StringBuilder();
-                        for (int i = 1; i <= 15; i++) {
-                            sb.append("[").append(String.format("%02d", i)).append("] ");
-                            if (i % 5 == 0) sb.append("\n");
-                        }
-                        aidlPrinterService.printText(sb.toString(), aidlCallback);
-                        aidlPrinterService.printWrapPaper(2, aidlCallback);
+                        if (!checkConnected()) return;
+
+                        aidlPrinterService.printerReset(aidlCallback);
+
+                        String[] seq = {
+                                "01","02","03","04","05",
+                                "06","07","08","09","10",
+                                "11","12","13","14","15"
+                        };
+
+                        aidlGraphicsPrinter.printRoundedGrid(
+                                seq,
+                                5,      // colunas
+                                64,     // largura box px
+                                48,     // altura box px
+                                10,     // raio canto
+                                22f     // fonte desejada
+                        );
+
                     } catch (Exception e) {
                         runOnUiThread(() -> showError(e));
                     }
@@ -459,8 +509,17 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 io.execute(() -> {
                     try {
-                        aidlPrinterService.printText(textoDemo + "\n\n", aidlCallback);
-                        aidlPrinterService.printWrapPaper(2, aidlCallback);
+                        if (!checkConnected()) return;
+
+                        aidlPrinterService.printerReset(aidlCallback);
+
+                        aidlGraphicsPrinter.printParagraphInRoundedBox(
+                                textoDemo,
+                                24,   // fontPx
+                                16,   // paddingPx
+                                20    // radiusPx
+                        );
+
                     } catch (Exception e) {
                         runOnUiThread(() -> showError(e));
                     }
@@ -547,7 +606,7 @@ public class MainActivity extends AppCompatActivity {
                     try {
                         aidlPrinterService.printText("Pague com PIX:\n", aidlCallback);
                         // align=1 (centro?), size=6 (tamanho simbólico)
-                        aidlPrinterService.printQRCode(qrPayload, 1, 6, aidlCallback);
+                        aidlPrinterService.printQRCode(qrPayload, 1, 300, aidlCallback);
                         aidlPrinterService.printWrapPaper(2, aidlCallback);
                     } catch (Exception e) {
                         runOnUiThread(() -> showError(e));
@@ -564,7 +623,7 @@ public class MainActivity extends AppCompatActivity {
                     try {
                         escPosPrinter.beginJob();
                         escPosPrinter.setAlign(1);
-                        escPosPrinter.txtPrint("CODIGO DE BARRAS:", 1, 0);
+                        escPosPrinter.txtPrint("CODIGO DE BARRAS:", 1, 1);
                         escPosPrinter.printCode128(code, 300, 100);
                         escPosPrinter.endJob();
                     } catch (IOException e) {
@@ -914,17 +973,21 @@ public class MainActivity extends AppCompatActivity {
     private boolean checkConnected() {
         if (backend == PrintBackend.BLUETOOTH) {
             if (btConn == null || escPosPrinter == null || !btConn.isConnected()) {
-                Toast.makeText(this,
+                Toast.makeText(
+                        this,
                         "Conecte uma impressora Bluetooth primeiro.",
-                        Toast.LENGTH_SHORT).show();
+                        Toast.LENGTH_SHORT
+                ).show();
                 return false;
             }
             return true;
         } else {
             if (!aidlBound || aidlPrinterService == null || !aidlReady) {
-                Toast.makeText(this,
+                Toast.makeText(
+                        this,
                         "Impressora interna não está pronta.",
-                        Toast.LENGTH_SHORT).show();
+                        Toast.LENGTH_SHORT
+                ).show();
                 return false;
             }
             return true;
