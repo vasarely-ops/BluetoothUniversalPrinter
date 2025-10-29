@@ -113,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
     private Button btnPrintSizes;
     private Button btnPrintRoundedGrid;
     private Button btnPrintTextRounded;
+    private Button btnPrintfonts;
 
     /* =====================================================
      * Estado de plataforma / backend
@@ -228,8 +229,35 @@ public class MainActivity extends AppCompatActivity {
     private final ActivityResultLauncher<String[]> permLauncher =
             registerForActivityResult(
                     new ActivityResultContracts.RequestMultiplePermissions(),
-                    result -> Log.d(TAG, "permissões: " + result)
+                    result -> {
+                        Log.d(TAG, "permissões: " + result);
+
+                        // Verifica se TODAS as permissões solicitadas foram concedidas
+                        boolean allGranted = true;
+                        for (Boolean granted : result.values()) {
+                            if (granted == null || !granted) {
+                                allGranted = false;
+                                break;
+                            }
+                        }
+
+                        if (!allGranted) {
+                            Toast.makeText(
+                                    MainActivity.this,
+                                    "Permissões de Bluetooth negadas.",
+                                    Toast.LENGTH_SHORT
+                            ).show();
+                            return;
+                        }
+
+                        // Se agora temos permissão e o backend é Bluetooth,
+                        // retomamos o fluxo de descoberta automaticamente
+                        if (backend == PrintBackend.BLUETOOTH) {
+                            startDiscoveryAndSelect();
+                        }
+                    }
             );
+
 
     /* =====================================================
      * BroadcastReceiver para descoberta Bluetooth
@@ -288,6 +316,7 @@ public class MainActivity extends AppCompatActivity {
         btnPrintSizes       = findViewById(R.id.btnPrintSizes);
         btnPrintRoundedGrid = findViewById(R.id.btnPrintRoundedGrid);
         btnPrintTextRounded = findViewById(R.id.btnPrintTextRounded);
+        btnPrintfonts       = findViewById(R.id.btnPrintfonts);
 
         // ===== 2. Detectar fabricante e backend =====
         deviceManufacturer = detectManufacturer();
@@ -550,6 +579,73 @@ public class MainActivity extends AppCompatActivity {
                                         "         DIREITA ~3x (simulado)\n";
                         aidlPrinterService.printText(multiline, aidlCallback);
                         aidlPrinterService.printWrapPaper(2, aidlCallback);
+                    } catch (Exception e) {
+                        runOnUiThread(() -> showError(e));
+                    }
+                });
+            }
+        });
+
+        btnPrintfonts.setOnClickListener(v -> {
+
+            if (backend == PrintBackend.BLUETOOTH) {
+                io.execute(() -> {
+                        try {
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "😎\nLinha 2\nLinha 3",
+                                    "VarsityTeamBold.otf",   // arquivo dentro de assets/
+                                    60f,             // tamanho em px
+                                    1,               // 0=esq,1=centro,2=dir
+                                    1               // padding em px
+                            );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com VarsityTeamBold 😎\nLinha 2\nLinha 3",
+                                    "VarsityTeamBold.otf",   // arquivo dentro de assets/
+                                    32f,             // tamanho em px
+                                    0,               // 0=esq,1=centro,2=dir
+                                    1               // padding em px
+                            );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com VarsityTeamBold 😎\nLinha 2\nLinha 3",
+                                    "VarsityTeamBold.otf",   // arquivo dentro de assets/
+                                    22f,             // tamanho em px
+                                    2,               // 0=esq,1=centro,2=dir
+                                    1               // padding em px
+                            );
+                            escPosPrinter.printCustomFontText(
+                                    MainActivity.this,
+                                    "Texto com Transcity 😎\nLinha 2\nLinha 3",
+                                    "Transcity.otf",   // arquivo dentro de assets/
+                                    18f,             // tamanho em px
+                                    1,               // 0=esq,1=centro,2=dir
+                                    1               // padding em px
+                            );
+                    } catch (IOException e) {
+                        runOnUiThread(() -> showError(e));
+                    }
+                });
+            } else {
+                io.execute(() -> {
+                    try {
+                        aidlGraphicsPrinter.printCustomFontText(
+                                MainActivity.this,
+                                "Texto com VarsityTeam-Bold 🚀\nOutra linha...",
+                                "VarsityTeamBold.otf",
+                                30f,
+                                1,   // centro
+                                16
+                        );
+                        aidlGraphicsPrinter.printCustomFontText(
+                                MainActivity.this,
+                                "Texto com Transcity.otf 🚀\nOutra linha...",
+                                "Transcity.otf",
+                                30f,
+                                1,   // centro
+                                16
+                        );
                     } catch (Exception e) {
                         runOnUiThread(() -> showError(e));
                     }
@@ -835,22 +931,30 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /* =====================================================
-     * SCAN BLUETOOTH + DIÁLOGO DE SELEÇÃO
-     * ===================================================== */
     @SuppressLint("MissingPermission")
     private void startDiscoveryAndSelect() {
+        // Só faz sentido para backend Bluetooth
         if (backend != PrintBackend.BLUETOOTH) {
-            Toast.makeText(this,
+            Toast.makeText(
+                    this,
                     "Este terminal usa impressora interna. Não há pareamento.",
-                    Toast.LENGTH_SHORT).show();
+                    Toast.LENGTH_SHORT
+            ).show();
             return;
         }
 
-        if (!checkAndRequestBtPermissions()) return;
+        // Se ainda não temos permissão, pede e sai.
+        // Quando o usuário aceitar, o callback do permLauncher chama esse método de novo.
+        if (!checkAndRequestBtPermissions()) {
+            return;
+        }
 
         if (btAdapter == null) {
-            Toast.makeText(this, "Sem adaptador Bluetooth.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(
+                    this,
+                    "Sem adaptador Bluetooth.",
+                    Toast.LENGTH_SHORT
+            ).show();
             return;
         }
 
@@ -860,26 +964,54 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        Toast.makeText(this, "Buscando dispositivos...", Toast.LENGTH_SHORT).show();
-
+        // 1) Limpa a lista e carrega já os pareados
         foundDevices.clear();
 
-        // adiciona pareados primeiro
         Set<BluetoothDevice> bondedSet = btAdapter.getBondedDevices();
         if (bondedSet != null) {
             for (BluetoothDevice bonded : bondedSet) {
                 String name = bonded.getName() == null ? "Sem Nome" : bonded.getName();
                 String addr = bonded.getAddress();
-                foundDevices.add(new PrinterDevice(name, addr));
+
+                // evita duplicados
+                boolean dup = false;
+                for (PrinterDevice d : foundDevices) {
+                    if (d.address.equals(addr)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    foundDevices.add(new PrinterDevice(name, addr));
+                }
             }
         }
 
-        // começa discovery; quando terminar chamamos showDevicePickerDialog()
+        // 2) Mostra imediatamente um diálogo com o que já temos pareado,
+        //    mesmo antes do discovery terminar. Isso melhora UX.
+        //    (Se não houver nada pareado, avisamos que estamos buscando.)
+        if (!foundDevices.isEmpty()) {
+            showDevicePickerDialog();
+        } else {
+            Toast.makeText(
+                    this,
+                    "Buscando dispositivos Bluetooth próximos...",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+
+        // 3) Inicia / reinicia discovery para tentar achar impressoras novas
         if (btAdapter.isDiscovering()) {
             btAdapter.cancelDiscovery();
         }
-        btAdapter.startDiscovery();
+        boolean started = btAdapter.startDiscovery();
+        Log.d(TAG, "startDiscovery() retornou: " + started);
+
+        // IMPORTANTE:
+        // Quando o discovery terminar, nosso BroadcastReceiver (discoveryReceiver)
+        // vai chamar showDevicePickerDialog() de novo, agora com os novos devices.
     }
+
 
     private void showDevicePickerDialog() {
         if (foundDevices.isEmpty()) {

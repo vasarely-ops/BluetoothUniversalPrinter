@@ -895,4 +895,112 @@ public class BluetoothEscPosPrinter {
 
         return bmp;
     }
+    // dentro de BluetoothEscPosPrinter.java (mesma classe), adicionar:
+    private Bitmap buildCustomFontTextBitmap(
+            android.content.Context ctx,
+            String text,
+            String fontAssetName,   // ex: "Quivert.otf"
+            float textSizePx,       // ex: 28f
+            int align,              // 0 = esquerda, 1 = centro, 2 = direita
+            int paddingPx           // ex: 16
+    ) {
+
+        try {
+            // 1. Carrega a fonte da pasta assets/
+            android.graphics.Typeface tf =
+                    android.graphics.Typeface.createFromAsset(ctx.getAssets(), fontAssetName);
+
+            // 2. Configura a tinta de texto
+            TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            paint.setColor(Color.BLACK);
+            paint.setTypeface(tf);
+            paint.setTextSize(textSizePx);
+
+            // 3. Largura útil do papel em pixels térmicos
+            //    LIMITA à largura máxima de pontos suportada pela impressora ESC/POS,
+            //    normalmente ~384 dots em bobina 58mm.  :contentReference[oaicite:3]{index=3}
+            final int maxContentWidthPx = MAX_WIDTH_DOTS - (paddingPx * 2);
+            if (maxContentWidthPx <= 0) return null;
+
+            // 4. Alinhamento visual dentro do StaticLayout
+            Layout.Alignment layoutAlign;
+            switch (align) {
+                case 1:  layoutAlign = Layout.Alignment.ALIGN_CENTER;   break;
+                case 2:  layoutAlign = Layout.Alignment.ALIGN_OPPOSITE; break;
+                default: layoutAlign = Layout.Alignment.ALIGN_NORMAL;   break;
+            }
+
+            // 5. Quebra de linha automática no width escolhido
+            StaticLayout staticLayout = StaticLayout.Builder
+                    .obtain(text, 0, text.length(), paint, maxContentWidthPx)
+                    .setAlignment(layoutAlign)
+                    .setIncludePad(false)
+                    .build();
+
+            int textW = staticLayout.getWidth();
+            int textH = staticLayout.getHeight();
+
+            int bmpW = textW + paddingPx * 2;
+            int bmpH = textH + paddingPx * 2;
+            if (bmpW <= 0 || bmpH <= 0) return null;
+
+            // 6. Monta Bitmap branco e desenha o texto
+            Bitmap bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bmp);
+            canvas.drawColor(Color.WHITE); // fundo branco
+
+            canvas.save();
+            canvas.translate(paddingPx, paddingPx);
+            staticLayout.draw(canvas);
+            canvas.restore();
+
+            return bmp;
+        } catch (Exception e) {
+            Log.e("BluetoothEscPosPrinter", "buildCustomFontTextBitmap failed", e);
+            return null;
+        }
+    }
+    // ainda em BluetoothEscPosPrinter.java
+    public void printCustomFontText(
+            android.content.Context ctx,
+            String text,
+            String fontAssetName,   // "Quivert.otf", "Transcity.otf", etc.
+            float textSizePx,       // tamanho em px (ex.: 28f ou 32f)
+            int align,              // 0=esq,1=centro,2=dir
+            int paddingPx           // margem lateral/superior/inf
+    ) throws IOException {
+
+        // Garante estado inicial limpo igual beginJob() faz. :contentReference[oaicite:4]{index=4}
+        reset();
+
+        // Gera o bitmap com a tipografia custom
+        Bitmap bmp = buildCustomFontTextBitmap(
+                ctx,
+                text,
+                fontAssetName,
+                textSizePx,
+                align,
+                paddingPx
+        );
+        if (bmp == null) {
+            // falhou gerar imagem, evita travar a impressora
+            writeText("<<Falha gerar fonte personalizada>>\n");
+            return;
+        }
+
+        // Ajusta alinhamento ESC/POS pro raster que vai sair
+        setAlign(align); // ESC a n 0/1/2  :contentReference[oaicite:5]{index=5}
+
+        // Manda o bitmap em faixas (stripes) usando o modo raster já existente
+        // Esse método já existe no seu arquivo e cuida do GS v 0 + split em blocos
+        // pra não estourar buffer.
+        printBitmapAsRasterStripes(bmp);
+
+
+        // Volta pro default
+        setAlign(0);
+        setTextSize((byte)0x00);
+        setBold(false);
+    }
+
 }

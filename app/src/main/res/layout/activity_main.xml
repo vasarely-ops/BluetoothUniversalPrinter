@@ -171,7 +171,20 @@
                     android:textColor="@android:color/white"
                     app:iconGravity="textStart"
                     app:iconPadding="8dp" />
-
+                <!-- Grid Bolas -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintfonts"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Fontes"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
                 <!-- Grid Bolas -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnPrintSizes"

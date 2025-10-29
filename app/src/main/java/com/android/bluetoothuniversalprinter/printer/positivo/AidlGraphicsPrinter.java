@@ -1,6 +1,7 @@
 package com.android.bluetoothuniversalprinter.printer.positivo;
 
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -38,6 +39,7 @@ public class AidlGraphicsPrinter {
 
     /** Largura útil típica da cabeça térmica 58mm (POSITIVO/L500): ~384 dots. */
     private static final int PAPER_MAX_WIDTH_DOTS = 384;
+    private static final int MAX_WIDTH_DOTS = 300;
 
     private final IPrinterService svc;
     private final IPrinterCallback cb;
@@ -417,5 +419,95 @@ public class AidlGraphicsPrinter {
         canvas.restore();
 
         return bmp;
+    }
+    private Bitmap buildCustomFontTextBitmap(
+            Context ctx,
+            String text,
+            String fontAssetName,   // "Quivert.otf"
+            float textSizePx,
+            int align,              // 0=esq,1=centro,2=dir
+            int paddingPx
+    ) {
+        try {
+            Typeface tf = Typeface.createFromAsset(ctx.getAssets(), fontAssetName);
+
+            TextPaint paint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            paint.setColor(Color.BLACK);
+            paint.setTypeface(tf);
+            paint.setTextSize(textSizePx);
+
+            int maxContentWidthPx = MAX_WIDTH_DOTS - (paddingPx * 2);
+            if (maxContentWidthPx <= 0) return null;
+
+            Layout.Alignment layoutAlign;
+            switch (align) {
+                case 1:  layoutAlign = Layout.Alignment.ALIGN_CENTER;   break;
+                case 2:  layoutAlign = Layout.Alignment.ALIGN_OPPOSITE; break;
+                default: layoutAlign = Layout.Alignment.ALIGN_NORMAL;   break;
+            }
+
+            StaticLayout staticLayout = StaticLayout.Builder
+                    .obtain(text, 0, text.length(), paint, maxContentWidthPx)
+                    .setAlignment(layoutAlign)
+                    .setIncludePad(false)
+                    .build();
+
+            int textW = staticLayout.getWidth();
+            int textH = staticLayout.getHeight();
+
+            int bmpW = textW + paddingPx * 2;
+            int bmpH = textH + paddingPx * 2;
+            if (bmpW <= 0 || bmpH <= 0) return null;
+
+            Bitmap bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bmp);
+            canvas.drawColor(Color.WHITE);
+
+            canvas.save();
+            canvas.translate(paddingPx, paddingPx);
+            staticLayout.draw(canvas);
+            canvas.restore();
+
+            return bmp;
+        } catch (Exception e) {
+            Log.e("AidlGraphicsPrinter", "buildCustomFontTextBitmap failed", e);
+            return null;
+        }
+    }
+
+    /**
+     * Imprime texto com fonte custom via impressora interna (svc).
+     * Ele gera um bitmap e manda usar printBitmap do serviço AIDL.
+     */
+    public void printCustomFontText(
+            Context ctx,
+            String text,
+            String fontAssetName,
+            float textSizePx,
+            int align,
+            int paddingPx
+    ) throws android.os.RemoteException {
+
+        Bitmap bmp = buildCustomFontTextBitmap(
+                ctx,
+                text,
+                fontAssetName,
+                textSizePx,
+                align,
+                paddingPx
+        );
+
+        if (bmp == null) {
+            // fallback simples se der ruim no bitmap:
+            svc.printText("<<Falha gerar fonte personalizada>>\n", cb);
+            svc.printWrapPaper(2, cb);
+            return;
+        }
+
+        // manda o bitmap pro firmware interno da impressora POSITIVO/L500
+        svc.printBitmap(bmp, cb);
+
+        // alimenta papel
+        svc.printWrapPaper(2, cb);
     }
 }
