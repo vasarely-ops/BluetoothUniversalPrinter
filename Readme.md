@@ -1,10 +1,9 @@
-MANUAL DE INTEGRAÇÃO
+# MANUAL DE INTEGRAÇÃO
 Impressão ESC/POS via Bluetooth (Android)
 Driver: BluetoothEscPosPrinter (custom)
 
-==================================================
-0. VISÃO RÁPIDA (cola para o dev apressado)
-   ===========================================
+
+# VISÃO RÁPIDA (cola para o dev apressado)
 
 Fluxo básico:
 
@@ -46,10 +45,7 @@ io.execute(() -> {
 
 Pronto. O resto deste manual explica cada parte.
 
-==================================================
-
-1. ARQUITETURA DO PROJETO
-   ==================================================
+# 1. ARQUITETURA DO PROJETO
 
 O projeto está dividido em 3 responsabilidades:
 
@@ -74,9 +70,7 @@ O projeto está dividido em 3 responsabilidades:
 
 IMPORTANTE: toda escrita no Bluetooth deve rodar fora da UI thread.
 
-==================================================
-2. FLUXO DE USO NA ACTIVITY
-   ===========================
+# 2. FLUXO DE USO NA ACTIVITY
 
 Passo a passo típico no app:
 
@@ -112,9 +106,7 @@ Por que thread separada?
 * Se mandar dados ESC/POS na UI thread, você pode travar a interface (ANR).
 * Impressoras lentas + Bluetooth ruim = I/O bloqueante.
 
-==================================================
-3. SOBRE A CLASSE BluetoothEscPosPrinter
-   ========================================
+# 3. SOBRE A CLASSE BluetoothEscPosPrinter
 
 O que ela faz:
 
@@ -147,9 +139,7 @@ Por que isso é importante?
 Muitas térmicas baratas (e POS embarcados) NÃO aguentam um bitmap grande num único comando ESC/POS.
 Mandar em stripes pequenas resolveu corte pela metade e travamentos.
 
-==================================================
-4. CICLO beginJob() / endJob()
-   ==============================
+# 4. CICLO beginJob() / endJob()
 
 printer.beginJob():
 
@@ -171,9 +161,8 @@ Recomendação:
 
 Assim você sempre imprime previsível, independente do estado anterior da cabeça.
 
-==================================================
-5. IMPRESSÃO DE TEXTO
-   =====================
+
+# 5. IMPRESSÃO DE TEXTO
 
 Assinatura:
 txtPrint(String text, int align, int scale)
@@ -220,9 +209,9 @@ Obs:
 * A codificação default é CP437.
   Se acentos saírem tortos, você pode trocar o Charset para ISO-8859-1 dentro da classe.
 
-==================================================
-6. FEED E CORTE
-   ===============
+
+# 6. FEED E CORTE
+
 
 feed(int linhas)
 
@@ -242,9 +231,7 @@ printer.feed(5);      // empurra papel pra fora
 printer.partialCut(); // tenta cortar, se existir guilhotina
 ```
 
-==================================================
-7. IMPRESSÃO DE IMAGENS, QR E CÓDIGO DE BARRAS
-   ==============================================
+# 7. IMPRESSÃO DE IMAGENS, QR E CÓDIGO DE BARRAS
 
 === 7.1 Imagem comum (logo, cupom fiscal renderizado etc.) ===
 
@@ -308,9 +295,9 @@ printer.printCode128("123456789012", 300, 100);
 printer.endJob();
 ```
 
-==================================================
-8. GRID DE NÚMEROS (BOLAS / CARTELAS)
-   =====================================
+
+# 8. GRID DE NÚMEROS (BOLAS / CARTELAS)
+
 
 Temos dois recursos para loterias, rifas, cartelas, etc.
 
@@ -417,9 +404,9 @@ Resultado visual:
 
 Mas com bordas arredondadas, bonitinho, centralizado.
 
-==================================================
-9. PARÁGRAFO COM CAIXA ARREDONDADA (BLOCO DE AVISO)
-   ===================================================
+
+# 9. PARÁGRAFO COM CAIXA ARREDONDADA (BLOCO DE AVISO)
+
 
 Função:
 printParagraphInRoundedBox(
@@ -470,9 +457,7 @@ Uso típico:
 * Informativo PIX.
 * Termos ou mini-contrato impresso.
 
-==================================================
-10. BOAS PRÁTICAS E DICAS
-    =========================
+# 10. BOAS PRÁTICAS E DICAS
 
 (1) SEMPRE imprimir em background thread
 - Não faça escrita Bluetooth na UI thread.
@@ -519,9 +504,7 @@ Uso típico:
 - Você pode trocar o Charset lá no construtor para Charset.forName("ISO-8859-1")
   se sua impressora suportar.
 
-==================================================
-11. CHECKLIST PARA ADAPTAR EM OUTRO SISTEMA
-    ===========================================
+# 11. CHECKLIST PARA ADAPTAR EM OUTRO SISTEMA
 
 Para reaproveitar em outro app Android:
 
@@ -562,9 +545,7 @@ printer.endJob();
 - fechar conexão btConn.close()
 - io.shutdownNow()
 
-==================================================
-12. RESUMO FINAL
-    ================
+# 12. RESUMO FINAL
 
 * Você tem uma classe pronta (BluetoothEscPosPrinter) que:
   -> Sabe imprimir texto com alinhamento, tamanho e bold automático.
@@ -581,10 +562,3 @@ printer.endJob();
   -> Chamar beginJob()/endJob() ao redor de cada impressão lógica.
 
 Com isso você tem um módulo de impressão ESC/POS reutilizável para cupons, comprovantes, comandas, rifas, bilhetes e etc. Sem depender de SDK proprietário da impressora.
-
----
-Pablo Vasarely,
-(86) 9 9949-1776
-pablovasarely@hotmail.com
-#   B l u e t o o t h U n i v e r s a l P r i n t e r  
- 
