@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="txtStatus" type="id" />
+    <item name="btnScan" type="id" />
+    <item name="recyclerPrinters" type="id" />
+    <item name="btnConnect" type="id" />
+    <item name="txtPrintHeader" type="id" />
+    <item name="scrollButtons" type="id" />
+    <item name="printButtonsWrapper" type="id" />
+    <item name="btnPrintAlign" type="id" />
+    <item name="btnPrintSizes" type="id" />
+    <item name="btnPrintImage" type="id" />
+    <item name="btnPrintQr" type="id" />
+    <item name="btnPrintCode128" type="id" />
+    <item name="btnCut" type="id" />
+</resources>

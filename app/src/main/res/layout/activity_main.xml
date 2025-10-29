@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="?android:colorBackground"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:id="@+id/contentWrapper"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <!-- ====== CARD: Equipamento / Fabricante detectado ====== -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardDeviceInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardUseCompatPadding="true"
+            app:cardElevation="4dp"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/lblDeviceHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Equipamento"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:textColor="?android:textColorPrimary" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/txtDeviceModel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Fabricante: --- / Modelo: ---"
+                    android:textSize="14sp"
+                    android:textColor="?android:textColorSecondary"
+                    tools:text="Fabricante: SUNMI / Modelo: P2" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/txtPrintMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Modo de impressão: ---"
+                    android:textSize="14sp"
+                    android:textColor="?android:textColorSecondary"
+                    tools:text="Modo de impressão: Serviço interno (AIDL)" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+
+        <!-- ====== CARD: Status / Conexão ====== -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardConnection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardUseCompatPadding="true"
+            app:cardElevation="4dp"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/lblPrinterHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Impressora"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:textColor="?android:textColorPrimary" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/txtStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Status: Desconectado"
+                    android:textSize="14sp"
+                    android:textColor="?android:textColorSecondary"
+                    tools:text="Status: Conectado em ELGIN I9 (00:11:22:33:44:55)" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScan"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Selecionar / Trocar Impressora"
+                    android:textAllCaps="false"
+                    android:textStyle="bold"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp"
+                    app:iconTint="@android:color/white"
+                    app:backgroundTint="?attr/colorPrimary"
+                    android:textColor="@android:color/white" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/txtHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Dica: o app tenta reconectar sozinho na próxima abertura."
+                    android:textSize="12sp"
+                    android:textColor="?android:textColorSecondary"
+                    tools:text="Dica: impressora interna, não precisa parear." />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+
+        <!-- ====== CARD: Ações de Impressão ====== -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardPrintTests"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardUseCompatPadding="true"
+            app:cardElevation="4dp"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:id="@+id/printButtonsWrapper"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/txtPrintHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Testes de Impressão"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="?android:textColorPrimary" />
+
+                <!-- Texto alinhado -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintAlign"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Texto alinhado ESQ / CENTRO / DIR"
+                    android:textAllCaps="false"
+                    android:textStyle="bold"
+                    app:backgroundTint="?attr/colorPrimary"
+                    android:textColor="@android:color/white"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- Grid Bolas -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintSizes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Grid Bolas"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- Grid Retangular -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintRoundedGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Grid Retangular"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- Texto Retangular -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintTextRounded"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Bloco de Texto em Caixa"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- Imagem -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Imagem (logo_sample)"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- QR Code -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintQr"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="QR Code (PIX teste)"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- Código de Barras -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPrintCode128"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Código de Barras CODE128"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+                <!-- Feed / Corte -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCut"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Feed / Corte Parcial"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="?attr/colorPrimary"
+                    app:strokeWidth="1dp"
+                    android:textColor="?attr/colorPrimary"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Espaço final -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="32dp" />
+
+    </LinearLayout>
+</ScrollView>
