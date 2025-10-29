@@ -84,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
     /* =====================================================
      * Constantes / chaves
      * ===================================================== */
+    private boolean aidlReady = false;
     private static final String TAG = "MainActivityPrinter";
     private static final String PREFS_NAME = "printer_prefs";
     private static final String PREF_KEY_MAC = "printer_mac";
@@ -139,21 +140,44 @@ public class MainActivity extends AppCompatActivity {
         public void onServiceConnected(ComponentName name, IBinder service) {
             aidlPrinterService = IPrinterService.Stub.asInterface(service);
             aidlBound = true;
-            runOnUiThread(() -> {
-                txtStatus.setText("Status: Serviço interno conectado");
-                Toast.makeText(MainActivity.this,
-                        "Impressora interna pronta",
-                        Toast.LENGTH_SHORT
-                ).show();
+
+            // tenta inicializar a impressora física
+            io.execute(() -> {
+                try {
+                    // inicializa
+                    aidlPrinterService.printerInit(aidlCallback);
+                    // opcional / seguro em alguns terminais: resetar
+                    aidlPrinterService.printerReset(aidlCallback);
+
+                    // se chegou aqui sem RemoteException:
+                    aidlReady = true;
+
+                    runOnUiThread(() -> {
+                        txtStatus.setText("Status: Impressora interna pronta");
+                        Toast.makeText(MainActivity.this,
+                                "Impressora interna pronta",
+                                Toast.LENGTH_SHORT
+                        ).show();
+                    });
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Falha ao inicializar impressora interna", e);
+                    aidlReady = false;
+                    runOnUiThread(() -> {
+                        txtStatus.setText("Status: Erro ao inicializar impressora interna");
+                        Toast.makeText(MainActivity.this,
+                                "Falha ao iniciar impressora interna",
+                                Toast.LENGTH_LONG
+                        ).show();
+                    });
+                }
             });
         }
 
         @Override
-        public void onServiceDisconnected(ComponentName name) {
-            aidlBound = false;
-            aidlPrinterService = null;
-            runOnUiThread(() -> txtStatus.setText("Status: Serviço interno desconectado"));
+        public void onServiceDisconnected(ComponentName componentName) {
+
         }
+
     };
 
     // Callback "genérico" para operações de impressão no AIDL
@@ -897,7 +921,7 @@ public class MainActivity extends AppCompatActivity {
             }
             return true;
         } else {
-            if (!aidlBound || aidlPrinterService == null) {
+            if (!aidlBound || aidlPrinterService == null || !aidlReady) {
                 Toast.makeText(this,
                         "Impressora interna não está pronta.",
                         Toast.LENGTH_SHORT).show();
